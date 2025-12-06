@@ -5,7 +5,7 @@ internal class Program
 {
     /// <summary>
     /// Entry point for the console Minesweeper game.
-    /// Milestone 2: creates the board, runs the game loop,
+    /// Milestone 2/3: creates the board, runs the game loop,
     /// and allows the player to visit or flag cells.
     /// </summary>
     static void Main(string[] args)
@@ -39,29 +39,30 @@ internal class Program
         Console.WriteLine("Cheat Answer Board:");
         PrintAnswers(board);
 
-        bool gameOver = false;
+        // Make sure the game starts in progress
+        board.GameState = GameState.InProgress;
 
         // =========================
         //     MAIN GAME LOOP
         // =========================
-        while (!gameOver)
+        while (board.GameState == GameState.InProgress)
         {
             // Show the player-facing board with ?, F, and numbers
             PrintBoard(board);
 
             // --- Get move from the player ---
             Console.Write("\nEnter row: ");
-            int row = int.Parse(Console.ReadLine());
+            int row = int.Parse(Console.ReadLine() ?? "0");
 
             Console.Write("Enter col: ");
-            int col = int.Parse(Console.ReadLine());
+            int col = int.Parse(Console.ReadLine() ?? "0");
 
             Console.WriteLine("1 = Visit");
             Console.WriteLine("2 = Flag");
             Console.WriteLine("3 = Use Reward (not implemented)");
             Console.Write("Choose action: ");
 
-            int choice = int.Parse(Console.ReadLine());
+            int choice = int.Parse(Console.ReadLine() ?? "1");
 
             // Call into the BoardService based on the action chosen
             if (choice == 1)
@@ -78,20 +79,27 @@ internal class Program
 
             // --- Update game state (InProgress, Won, Lost) ---
             board.GameState = service.DetermineGameState(board);
-
-            if (board.GameState == GameState.Won)
-            {
-                Console.WriteLine("\nYOU WON!!!");
-                gameOver = true;
-            }
-            else if (board.GameState == GameState.Lost)
-            {
-                Console.WriteLine("\nYOU HIT A BOMB!!!");
-                gameOver = true;
-            }
         }
 
-        Console.WriteLine("Game over.");
+        // =========================
+        //      GAME OVER SCREEN
+        // =========================
+        Console.WriteLine();
+        Console.WriteLine("Final board:");
+        PrintBoard(board);
+
+        if (board.GameState == GameState.Won)
+        {
+            Console.WriteLine("\nYOU WON!!!");
+        }
+        else if (board.GameState == GameState.Lost)
+        {
+            Console.WriteLine("\nYOU HIT A BOMB!!!");
+        }
+
+        Console.WriteLine("\nGame over.");
+        Console.WriteLine("Press any key to exit...");
+        Console.ReadKey();
     }
 
     /// <summary>

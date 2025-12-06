@@ -143,6 +143,7 @@ namespace MinesweeperClassLibrary.BusinessLogicLayer
         /// Marks a cell as visited. 
         /// If the cell is a bomb, sets game state to Lost.
         /// Flags cannot be visited.
+        /// For empty cells (0 neighbors), triggers a recursive flood fill.
         /// </summary>
         public void VisitCell(BoardModel board, int row, int col)
         {
@@ -152,17 +153,28 @@ namespace MinesweeperClassLibrary.BusinessLogicLayer
 
             var cell = board.Cells[row, col];
 
+
             // Cannot visit flagged cells
             if (cell.IsFlagged)
                 return;
 
-            // Mark cell as visited
-            cell.IsVisited = true;
-
             // If a bomb is visited → loss
             if (cell.IsBomb)
             {
+                cell.IsVisited = true;
                 board.GameState = GameState.Lost;
+                return;
+            }
+
+            // If this cell has zero bomb neighbors, use flood fill
+            if (cell.NumberOfBombNeighbors == 0)
+            {
+                FloodFill(board, row, col);
+            }
+            else
+            {
+                // Normal number cell: just mark as visited
+                cell.IsVisited = true;
             }
         }
 
@@ -223,6 +235,53 @@ namespace MinesweeperClassLibrary.BusinessLogicLayer
                 return GameState.Won;
 
             return GameState.InProgress;
+        }
+
+
+        // ============================
+        //    MILESTONE 3 LOGIC
+        // ============================
+
+        /// <summary>
+        /// Recursively reveals a block of cells that have no bomb neighbors.
+        /// Starting from (row, col), this method:
+        /// - Marks the current cell as visited
+        /// - Stops if the cell is a bomb, flagged, or already visited
+        /// - If the cell has zero bomb neighbors, it recursively visits
+        ///   all valid surrounding cells.
+        /// </summary>
+        private void FloodFill(BoardModel board, int row, int col)
+        {
+            // Stop if outside the board
+            if (row < 0 || col < 0 || row >= board.Size || col >= board.Size)
+                return;
+
+            var cell = board.Cells[row, col];
+
+            // Stop if this cell is already processed or cannot be visited
+            if (cell.IsVisited || cell.IsFlagged || cell.IsBomb)
+                return;
+
+            // Mark this cell as visited
+            cell.IsVisited = true;
+
+            // If this cell has a number, reveal it but do not spread further
+            if (cell.NumberOfBombNeighbors > 0)
+                return;
+
+            // This cell has zero bomb neighbors.
+            // Recursively visit all 8 surrounding cells.
+            for (int r = row - 1; r <= row + 1; r++)
+            {
+                for (int c = col - 1; c <= col + 1; c++)
+                {
+                    // Skip the current cell
+                    if (r == row && c == col)
+                        continue;
+
+                    FloodFill(board, r, c);
+                }
+            }
         }
     }
 }
