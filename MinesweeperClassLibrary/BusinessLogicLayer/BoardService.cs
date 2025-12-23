@@ -1,42 +1,35 @@
-﻿using MinesweeperClassLibrary.Models;
-using System;
-using System.Collections.Generic;
-using System.Text;
+﻿using System;
+using MinesweeperClassLibrary.Models;
 
 namespace MinesweeperClassLibrary.BusinessLogicLayer
 {
     /// <summary>
-    /// Handles all business logic for the Minesweeper game.
-    /// This includes: placing bombs, counting neighbors, 
-    /// processing visits and flags, and determining game state.
+    /// Handles all business logic for Minesweeper:
+    /// - placing bombs
+    /// - counting neighbor bombs
+    /// - visiting cells (including flood fill)
+    /// - flag toggling
+    /// - game state checks
     /// </summary>
     public class BoardService
     {
-        /// <summary>
-        /// Random generator used for bomb placement.
-        /// </summary>
         private readonly Random _random = new Random();
 
         /// <summary>
-        /// Randomly places bombs on the board based on difficulty level.
-        /// Ensures bombs are not placed twice in the same cell.
+        /// Randomly places bombs based on difficulty.
         /// </summary>
         public void SetupBombs(BoardModel board)
         {
             int totalCells = board.Size * board.Size;
-
-            // Calculate number of bombs based on % for the difficulty
             int numberOfBombs = GetBombCountForDifficulty(board.Difficulty, totalCells);
 
             int bombsPlaced = 0;
 
-            // Randomly select cells until we reach the required bomb count
             while (bombsPlaced < numberOfBombs)
             {
                 int row = _random.Next(0, board.Size);
                 int col = _random.Next(0, board.Size);
 
-                // Only place a bomb if this cell doesn't already have one
                 if (!board.Cells[row, col].IsBomb)
                 {
                     board.Cells[row, col].IsBomb = true;
@@ -46,28 +39,26 @@ namespace MinesweeperClassLibrary.BusinessLogicLayer
         }
 
         /// <summary>
-        /// Returns how many bombs to place on the board based on difficulty.
+        /// Calculates bomb count using difficulty percentage.
         /// </summary>
         private int GetBombCountForDifficulty(DifficultyLevel difficulty, int totalCells)
         {
             double percentage = difficulty switch
             {
-                DifficultyLevel.Easy => 0.10,     // 10%
-                DifficultyLevel.Medium => 0.15,  // 15%
-                DifficultyLevel.Hard => 0.20,    // 20%
+                DifficultyLevel.Easy => 0.10,
+                DifficultyLevel.Medium => 0.15,
+                DifficultyLevel.Hard => 0.20,
                 _ => 0.10
             };
 
             int count = (int)Math.Round(totalCells * percentage);
-
-            // Always place at least 1 bomb
             return Math.Max(count, 1);
         }
 
         /// <summary>
-        /// For each cell on the board, determines how many bombs
-        /// are in the eight surrounding cells.
-        /// Bombs get a special marker (9).
+        /// Sets NumberOfBombNeighbors for every cell.
+        /// IMPORTANT: bombs do NOT need a special "9" marker.
+        /// The UI can just check IsBomb directly.
         /// </summary>
         public void CountBombsNearby(BoardModel board)
         {
@@ -77,8 +68,7 @@ namespace MinesweeperClassLibrary.BusinessLogicLayer
                 {
                     if (board.Cells[row, col].IsBomb)
                     {
-                        // Mark bombs with 9 for internal use
-                        board.Cells[row, col].NumberOfBombNeighbors = 9;
+                        board.Cells[row, col].NumberOfBombNeighbors = 0; // keep clean
                     }
                     else
                     {
@@ -89,24 +79,17 @@ namespace MinesweeperClassLibrary.BusinessLogicLayer
             }
         }
 
-        /// <summary>
-        /// Counts bombs around a specific (row, col) cell.
-        /// Checks all 8 surrounding positions, skipping out-of-bounds.
-        /// </summary>
         private int CountBombsAroundCell(BoardModel board, int row, int col)
         {
             int count = 0;
 
-            // Check the 3x3 area surrounding the cell
             for (int r = row - 1; r <= row + 1; r++)
             {
                 for (int c = col - 1; c <= col + 1; c++)
                 {
-                    // Skip invalid board positions
                     if (r < 0 || c < 0 || r >= board.Size || c >= board.Size)
                         continue;
 
-                    // Skip the cell itself
                     if (r == row && c == col)
                         continue;
 
@@ -119,46 +102,28 @@ namespace MinesweeperClassLibrary.BusinessLogicLayer
         }
 
         /// <summary>
-        /// Placeholder for later milestones.
-        /// </summary>
-        public void UseSpecialBonus(BoardModel board)
-        {
-            // special ability added in later milestone
-        }
-
-        /// <summary>
-        /// Placeholder for later milestones (scoring system).
-        /// </summary>
-        public int DetermineFinalScore(BoardModel board)
-        {
-            return 0;
-        }
-
-
-        // ============================
-        //    MILESTONE 2 LOGIC
-        // ============================
-
-        /// <summary>
-        /// Marks a cell as visited. 
-        /// If the cell is a bomb, sets game state to Lost.
-        /// Flags cannot be visited.
-        /// For empty cells (0 neighbors), triggers a recursive flood fill.
+        /// Reveals a cell if possible.
+        /// - ignores out-of-bounds
+        /// - ignores flagged
+        /// - bomb -> mark visited and end game
+        /// - safe -> visit cell; if 0 neighbors -> flood fill region
         /// </summary>
         public void VisitCell(BoardModel board, int row, int col)
         {
-            // Ignore invalid positions
-            if (row < 0 || col < 0 || row >= board.Size || col >= board.Size)
+            if (!IsInBounds(board, row, col))
                 return;
 
             var cell = board.Cells[row, col];
 
-
-            // Cannot visit flagged cells
+            // can't reveal a flagged cell
             if (cell.IsFlagged)
                 return;
 
-            // If a bomb is visited → loss
+            // already visited: nothing to do
+            if (cell.IsVisited)
+                return;
+
+            // bomb hit -> loss
             if (cell.IsBomb)
             {
                 cell.IsVisited = true;
@@ -166,42 +131,39 @@ namespace MinesweeperClassLibrary.BusinessLogicLayer
                 return;
             }
 
-            // If this cell has zero bomb neighbors, use flood fill
+            // safe cell
             if (cell.NumberOfBombNeighbors == 0)
             {
                 FloodFill(board, row, col);
             }
             else
             {
-                // Normal number cell: just mark as visited
                 cell.IsVisited = true;
             }
         }
 
         /// <summary>
-        /// Toggles a flag on a cell.
-        /// Flags cannot be placed on visited cells.
+        /// Right-click flags:
+        /// - can't flag visited cells
+        /// - toggles flagged on/off
         /// </summary>
         public void ToggleFlag(BoardModel board, int row, int col)
         {
-            if (row < 0 || col < 0 || row >= board.Size || col >= board.Size)
+            if (!IsInBounds(board, row, col))
                 return;
 
             var cell = board.Cells[row, col];
 
-            // Cannot flag a cell that is already visited
             if (cell.IsVisited)
                 return;
 
-            // Toggle
             cell.IsFlagged = !cell.IsFlagged;
         }
 
         /// <summary>
-        /// Determines if the player:
-        /// - Lost: visited a bomb  
-        /// - Won: all safe cells visited  
-        /// - Is still playing  
+        /// Checks win/loss/in progress:
+        /// - Lost if any bomb visited
+        /// - Won if all safe cells visited
         /// </summary>
         public GameState DetermineGameState(BoardModel board)
         {
@@ -214,17 +176,11 @@ namespace MinesweeperClassLibrary.BusinessLogicLayer
                 {
                     var cell = board.Cells[row, col];
 
-                    // Lose condition: visited a bomb
                     if (cell.IsBomb && cell.IsVisited)
-                    {
                         anyBombVisited = true;
-                    }
 
-                    // Win condition requires ALL safe cells to be visited
                     if (!cell.IsBomb && !cell.IsVisited)
-                    {
                         allSafeVisited = false;
-                    }
                 }
             }
 
@@ -237,51 +193,62 @@ namespace MinesweeperClassLibrary.BusinessLogicLayer
             return GameState.InProgress;
         }
 
+        /// <summary>
+        /// Simple scoring (no timer).
+        /// </summary>
+        public int DetermineFinalScore(BoardModel board)
+        {
+            int totalCells = board.Size * board.Size;
 
-        // ============================
-        //    MILESTONE 3 LOGIC
-        // ============================
+            int diffMult = board.Difficulty switch
+            {
+                DifficultyLevel.Easy => 1,
+                DifficultyLevel.Medium => 2,
+                DifficultyLevel.Hard => 3,
+                _ => 1
+            };
+
+            return totalCells * 10 * diffMult;
+        }
 
         /// <summary>
-        /// Recursively reveals a block of cells that have no bomb neighbors.
-        /// Starting from (row, col), this method:
-        /// - Marks the current cell as visited
-        /// - Stops if the cell is a bomb, flagged, or already visited
-        /// - If the cell has zero bomb neighbors, it recursively visits
-        ///   all valid surrounding cells.
+        /// Flood fill reveal:
+        /// - marks cell visited
+        /// - if cell has neighbors > 0, stop
+        /// - if 0 neighbors, recursively visit the 8 surrounding cells
         /// </summary>
         private void FloodFill(BoardModel board, int row, int col)
         {
-            // Stop if outside the board
-            if (row < 0 || col < 0 || row >= board.Size || col >= board.Size)
+            if (!IsInBounds(board, row, col))
                 return;
 
             var cell = board.Cells[row, col];
 
-            // Stop if this cell is already processed or cannot be visited
             if (cell.IsVisited || cell.IsFlagged || cell.IsBomb)
                 return;
 
-            // Mark this cell as visited
             cell.IsVisited = true;
 
-            // If this cell has a number, reveal it but do not spread further
+            // If it has a number, reveal it but don't spread
             if (cell.NumberOfBombNeighbors > 0)
                 return;
 
-            // This cell has zero bomb neighbors.
-            // Recursively visit all 8 surrounding cells.
+            // Spread to neighbors
             for (int r = row - 1; r <= row + 1; r++)
             {
                 for (int c = col - 1; c <= col + 1; c++)
                 {
-                    // Skip the current cell
                     if (r == row && c == col)
                         continue;
 
                     FloodFill(board, r, c);
                 }
             }
+        }
+
+        private bool IsInBounds(BoardModel board, int row, int col)
+        {
+            return row >= 0 && col >= 0 && row < board.Size && col < board.Size;
         }
     }
 }
